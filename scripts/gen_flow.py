@@ -8,8 +8,9 @@ interpreta caminhos relativos com "/" como chaves do seu armazenamento interno
 ("<namespace>/<arquivo>"). Rode de novo este script se o projeto mudar de pasta/máquina.
 
 Fluxo:
-    File (CSV) ─► Resumo Financeiro (pandas) ─► Prompt {fatos} ─► Ollama ─► Chat Output
+    File (CSV) ─► Resumo Financeiro (pandas) ─► Prompt {fatos} ─► Ollama ─► Validador ─► Chat Output
     Chat Input ─► Resumo Financeiro {pergunta}  e  Prompt {pergunta}
+    Resumo Financeiro ─► Validador {fatos}
 
 Os componentes customizados vêm de components/*.py; o código-fonte deles é embutido
 no flow.json (é assim que o Langflow guarda componentes customizados).
@@ -32,6 +33,9 @@ COMPONENT_FILE = ROOT / "components" / "resumo_financeiro.py"
 
 sys.path.insert(0, str(COMPONENT_FILE.parent))
 from resumo_financeiro import ResumoFinanceiroComponent  # noqa: E402
+from validador_resposta import ValidadorRespostaComponent  # noqa: E402
+
+VALIDADOR_FILE = COMPONENT_FILE.parent / "validador_resposta.py"
 
 SYSTEM_MESSAGE = (
     "Você é uma ferramenta de reescrita de texto de um sistema de testes. "
@@ -97,9 +101,13 @@ if "system_message" in ot:
 if "num_ctx" in ot:
     ot["num_ctx"]["value"] = 8192
 
-chat_out = node(ChatOutput(), "ChatOutput-fin01", 1800, 150)
+validador = ValidadorRespostaComponent()
+validador._code = VALIDADOR_FILE.read_text(encoding="utf-8")
+validador_n = node(validador, "ValidadorResposta-fin01", 1800, 150)
 
-nodes = [chat_in, file_n, resumo_n, prompt_n, ollama_n, chat_out]
+chat_out = node(ChatOutput(), "ChatOutput-fin01", 2250, 150)
+
+nodes = [chat_in, file_n, resumo_n, prompt_n, ollama_n, validador_n, chat_out]
 by_id = {n["id"]: n for n in nodes}
 
 
@@ -134,7 +142,9 @@ edges = [
     edge("ResumoFinanceiro-fin01", "resumo", "Prompt-fin01", "fatos"),
     edge("ChatInput-fin01", "message", "Prompt-fin01", "pergunta"),
     edge("Prompt-fin01", "prompt", "OllamaModel-fin01", "input_value"),
-    edge("OllamaModel-fin01", "text_output", "ChatOutput-fin01", "input_value"),
+    edge("OllamaModel-fin01", "text_output", "ValidadorResposta-fin01", "resposta"),
+    edge("ResumoFinanceiro-fin01", "resumo", "ValidadorResposta-fin01", "fatos"),
+    edge("ValidadorResposta-fin01", "resposta_validada", "ChatOutput-fin01", "input_value"),
 ]
 
 flow = {
