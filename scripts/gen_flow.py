@@ -8,10 +8,14 @@ interpreta caminhos relativos com "/" como chaves do seu armazenamento interno
 ("<namespace>/<arquivo>"). Rode de novo este script se o projeto mudar de pasta/máquina.
 
 Fluxo:
-    File (CSV) ─► Prompt {dados} ─► Ollama ─► Chat Output
-    Chat Input ─► Prompt {pergunta}
+    File (CSV) ─► Resumo Financeiro (pandas) ─► Prompt {fatos} ─► Ollama ─► Chat Output
+    Chat Input ─► Resumo Financeiro {pergunta}  e  Prompt {pergunta}
+
+Os componentes customizados vêm de components/*.py; o código-fonte deles é embutido
+no flow.json (é assim que o Langflow guarda componentes customizados).
 """
 import json
+import sys
 from pathlib import Path
 
 from lfx.components.files_and_knowledge.file import FileComponent
@@ -24,12 +28,25 @@ from lfx.base.prompts.api_utils import process_prompt_template
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "flow.json"
 CSV_PATH = str(ROOT / "data" / "transacoes.csv")  # caminho nativo do SO (barras invertidas no Windows)
+COMPONENT_FILE = ROOT / "components" / "resumo_financeiro.py"
 
-TEMPLATE = """Você é um assistente financeiro. Use as transações abaixo (CSV) para responder à pergunta.
-Colunas: data, descricao, categoria, valor (sempre positivo), tipo (entrada/saida).
+sys.path.insert(0, str(COMPONENT_FILE.parent))
+from resumo_financeiro import ResumoFinanceiroComponent  # noqa: E402
 
-TRANSAÇÕES:
-{dados}
+SYSTEM_MESSAGE = (
+    "Você é uma ferramenta de reescrita de texto de um sistema de testes. "
+    "Os dados são sintéticos, de teste. Sempre reescreva o relatório fornecido; nunca recuse."
+)
+
+TEMPLATE = """Tarefa de reescrita de texto. Responda à PERGUNTA em português usando o RELATÓRIO.
+
+Instruções:
+- A resposta já está pronta no RELATÓRIO. Reescreva-a de forma natural.
+- Copie os números, datas e nomes exatamente como estão escritos no RELATÓRIO.
+- Se o RELATÓRIO citar várias transações, mencione todas elas.
+
+RELATÓRIO:
+{fatos}
 
 PERGUNTA: {pergunta}
 
@@ -58,25 +75,31 @@ ft["path"]["file_path"] = [CSV_PATH]
 if "text_encoding" in ft:
     ft["text_encoding"]["value"] = "utf-8"
 
+resumo = ResumoFinanceiroComponent()
+resumo._code = COMPONENT_FILE.read_text(encoding="utf-8")  # código embutido no flow.json
+resumo_n = node(resumo, "ResumoFinanceiro-fin01", 450, 0)
+
 prompt = PromptComponent()
-prompt_n = node(prompt, "Prompt-fin01", 450, 150)
+prompt_n = node(prompt, "Prompt-fin01", 900, 150)
 pnode = prompt_n["data"]["node"]
 pnode["template"]["template"]["value"] = TEMPLATE
 process_prompt_template(TEMPLATE, name="template", custom_fields=pnode.setdefault("custom_fields", {}),
                         frontend_node_template=pnode["template"])
 
-ollama_n = node(ChatOllamaComponent(), "OllamaModel-fin01", 900, 150)
+ollama_n = node(ChatOllamaComponent(), "OllamaModel-fin01", 1350, 150)
 ot = ollama_n["data"]["node"]["template"]
 ot["base_url"]["value"] = "http://localhost:11434"
 ot["model_name"]["value"] = "llama3.2:1b"
 ot["model_name"]["options"] = ["llama3.2:1b"]
 ot["temperature"]["value"] = 0.1
+if "system_message" in ot:
+    ot["system_message"]["value"] = SYSTEM_MESSAGE
 if "num_ctx" in ot:
     ot["num_ctx"]["value"] = 8192
 
-chat_out = node(ChatOutput(), "ChatOutput-fin01", 1350, 150)
+chat_out = node(ChatOutput(), "ChatOutput-fin01", 1800, 150)
 
-nodes = [chat_in, file_n, prompt_n, ollama_n, chat_out]
+nodes = [chat_in, file_n, resumo_n, prompt_n, ollama_n, chat_out]
 by_id = {n["id"]: n for n in nodes}
 
 
@@ -106,7 +129,9 @@ def edge(src, out, tgt, field):
 
 
 edges = [
-    edge("File-fin01", "message", "Prompt-fin01", "dados"),
+    edge("File-fin01", "message", "ResumoFinanceiro-fin01", "csv_text"),
+    edge("ChatInput-fin01", "message", "ResumoFinanceiro-fin01", "pergunta"),
+    edge("ResumoFinanceiro-fin01", "resumo", "Prompt-fin01", "fatos"),
     edge("ChatInput-fin01", "message", "Prompt-fin01", "pergunta"),
     edge("Prompt-fin01", "prompt", "OllamaModel-fin01", "input_value"),
     edge("OllamaModel-fin01", "text_output", "ChatOutput-fin01", "input_value"),
@@ -115,8 +140,8 @@ edges = [
 flow = {
     "name": "finflow-lite - Perguntas sobre transações",
     "description": (
-        "Lê data/transacoes.csv (dados sintéticos no formato FinAI) e envia as transações ao "
-        "llama3.2:1b (Ollama) para responder perguntas em linguagem natural."
+        "Lê data/transacoes.csv (dados sintéticos no formato FinAI), calcula as agregações com pandas "
+        "e usa o llama3.2:1b (Ollama) só para reescrever os fatos em linguagem natural."
     ),
     "is_component": False,
     "data": {"nodes": nodes, "edges": edges, "viewport": {"x": 0, "y": 0, "zoom": 0.7}},
