@@ -1,0 +1,35 @@
+data,descricao,categoria,valor,tipo
+2026-01-01,Salário,receita,5200.00,entrada
+2026-01-03,Aluguel,moradia,1250.00,saida
+2026-01-04,Supermercado,alimentacao,380.50,saida
+2026-01-06,Spotify,lazer,21.90,saida
+2026-01-08,Farmácia,saude,65.00,saida
+2026-01-11,Restaurante,alimentacao,98.00,saida
+2026-01-13,Uber,transporte,38.00,saida
+2026-01-16,Conta de Luz,moradia,195.00,saida
+2026-01-18,Curso Online,educacao,149.00,saida
+2026-01-22,Academia,saude,99.00,saida
+2026-01-27,Combustível,transporte,210.00,saida
+2026-02-01,Salário,receita,5200.00,entrada
+2026-02-03,Aluguel,moradia,1250.00,saida
+2026-02-05,Supermercado,alimentacao,410.00,saida
+2026-02-07,Cinema,lazer,45.00,saida
+2026-02-10,Consulta Médica,saude,180.00,saida
+2026-02-12,iFood,alimentacao,135.00,saida
+2026-02-14,Uber,transporte,52.00,saida
+2026-02-17,Conta de Internet,moradia,120.00,saida
+2026-02-20,Livro Técnico,educacao,89.00,saida
+2026-02-24,Academia,saude,99.00,saida
+2026-02-28,Combustível,transporte,230.00,saida
+2026-03-01,Salário,receita,5200.00,entrada
+2026-03-02,Freelance,receita,600.00,entrada
+2026-03-03,Aluguel,moradia,1250.00,saida
+2026-03-05,Supermercado,alimentacao,395.00,saida
+2026-03-08,Netflix,lazer,55.90,saida
+2026-03-09,Farmácia,saude,72.00,saida
+2026-03-12,Restaurante,alimentacao,110.00,saida
+2026-03-14,Uber,transporte,41.00,saida
+2026-03-16,Conta de Luz,moradia,205.00,saida
+2026-03-19,Curso Online,educacao,199.00,saida
+2026-03-23,Academia,saude,99.00,saida
+2026-03-28,Combustível,transporte,240.00,saida
