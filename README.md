@@ -83,7 +83,7 @@ As mesmas 3 perguntas, **3 execuções de cada** pelo `flow.json` completo. **Os
 | Pergunta | Respostas obtidas (3/3 corretas) | Quem redigiu |
 |---|---|---|
 | Total gasto com alimentação em jan/2026 | "O total de gastos com alimentação em janeiro de 2026 foi de **R$ 478,50**." | LLM nas 3 |
-| Transações de alimentação em jan/2026 | **Supermercado em 04/01/2026 (R$ 380,50)** e **Restaurante em 11/01/2026 (R$ 98,00)**, total **R$ 478,50** | LLM em 1, validador em 2 |
+| Transações de alimentação em jan/2026 | **Supermercado em 04/01/2026 (R$ 380,50)** e **Restaurante em 11/01/2026 (R$ 98,00)**, total **R$ 478,50** | LLM em 1–2 de 3, validador nas demais (varia a cada rodada) |
 | Maior despesa de mar/2026 | "A maior despesa em março de 2026 foi **Aluguel (moradia)**, no valor de **R$ 1.250,00**, em 03/03/2026." | LLM nas 3 |
 
 #### O que aprendemos com o `llama3.2:1b`
