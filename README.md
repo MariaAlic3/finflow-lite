@@ -2,22 +2,74 @@
 
 Projeto de prototipagem com [Langflow](https://www.langflow.org/) usando um LLM local via [Ollama](https://ollama.com/).
 
-## Modelo padrão: `llama3.2:1b`
+## Objetivo
 
-O modelo escolhido como padrão do projeto é o **`llama3.2:1b`**, por ser **mais leve (~1,3 GB) e rápido para prototipagem**, rodando bem localmente sem exigir GPU dedicada.
+O finflow-lite existe para **testar o Langflow com um modelo de linguagem local (`llama3.2:1b`, via Ollama)** respondendo perguntas sobre transações financeiras. Tudo roda na máquina, sem custo de API.
 
-A configuração fica em `.env` (modelo em `.env.example`):
+Os dados são **sintéticos**, mas seguem **o mesmo padrão de colunas do projeto FinAI**. Assim, o que funcionar aqui pode ser levado para o FinAI sem adaptar os dados.
+
+Perguntas que o flow responde, por exemplo:
+
+- "Qual foi o total de gastos com alimentação em janeiro de 2026?"
+- "Liste as transações de alimentação de janeiro de 2026."
+- "Qual foi a maior despesa de março de 2026?"
+
+## Arquitetura
+
+```
+                      ┌──────────────────────────────────────────────────────────────┐
+                      │                                                              ▼
+File (data/transacoes.csv) ─► Resumo Financeiro (pandas) ─► Prompt ─► Ollama (llama3.2:1b) ─► Validador ─► Chat Output
+                                     ▲                         ▲
+Chat Input (pergunta) ───────────────┴─────────────────────────┘
+```
+
+Em resumo: **File → Resumo Financeiro → Prompt → Ollama → Validador → Chat Output**. O Chat Input entrega a pergunta ao Resumo Financeiro e ao Prompt, e o Resumo Financeiro também entrega os fatos ao Validador.
+
+A ideia central é: **o pandas calcula e o LLM só redige.**
+
+| Etapa | Componente | O que faz |
+|---|---|---|
+| 1. Leitura | **Read File** (nativo) | Lê `data/transacoes.csv` e entrega o conteúdo bruto (saída **Raw Content**). |
+| 2. Cálculo | **Resumo Financeiro (pandas)** (`components/resumo_financeiro.py`) | Lê o CSV com pandas e calcula a soma por categoria e mês, os totais mensais e a maior despesa do mês e do período. A partir dos meses e categorias citados na pergunta e da intenção dela (*total*, *lista* ou *maior despesa*), entrega **só o fato que responde à pergunta**, já calculado. Se a pergunta não tiver uma intenção reconhecível, entrega o relatório completo. |
+| 3. Instrução | **Prompt Template** (nativo) | Monta o pedido com `{fatos}` e `{pergunta}`: "a resposta já está pronta, reescreva de forma natural". |
+| 4. Redação | **Ollama** (nativo, `llama3.2:1b`, temperatura 0.1) | Recebe o fato pronto e só o reescreve em linguagem natural, sem fazer contas. |
+| 5. Conferência | **Validador de Resposta** (`components/validador_resposta.py`) | Confere se a resposta do modelo tem **exatamente** os valores em R$ dos fatos. Se o modelo recusar, deixar um valor de fora ou inventar um número, devolve o fato calculado no lugar. |
+| 6. Saída | **Chat Output** (nativo) | Mostra a resposta final no Playground ou no terminal. |
+
+### Como o `flow.json` é gerado
+
+O `flow.json` **não é editado à mão**. Ele é gerado por `scripts/gen_flow.py`, que monta cada nó a partir das classes reais do Langflow instalado no `.venv` (`lfx` / `lfx_ollama`) e embute no JSON o código-fonte dos componentes customizados de `components/`:
+
+```powershell
+python scripts/gen_flow.py
+```
+
+Para mudar o flow, altere `scripts/gen_flow.py` ou `components/*.py` e rode o script de novo.
+
+## Ferramentas e versões
+
+| Ferramenta | Versão | Papel |
+|---|---|---|
+| Windows 11 / PowerShell | — | Ambiente de desenvolvimento |
+| Python | 3.14.3 | Ambiente virtual `.venv` |
+| Langflow | **1.13.1** (via pip; foi a versão que o pip resolveu no Python 3.14) | Orquestração visual do flow |
+| Ollama | 0.40.16 | Servidor local do modelo (porta 11434) |
+| Modelo | **`llama3.2:1b`** (~1,3 GB) | Redação das respostas |
+| pandas | 2.3.3 (instalado junto com o Langflow) | Cálculos no componente Resumo Financeiro |
+
+### Por que o `llama3.2:1b`
+
+É **leve (~1,3 GB) e rápido para prototipagem** e roda bem localmente sem GPU dedicada. A configuração fica em `.env` (modelo em `.env.example`):
 
 ```env
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=llama3.2:1b
 ```
 
-No Langflow, use o componente **Ollama** com *Base URL* `http://localhost:11434` e *Model Name* `llama3.2:1b`.
-
 ## Dados de teste: `data/transacoes.csv`
 
-Os dados em `data/transacoes.csv` são **sintéticos, gerados para este exercício**: não são transações reais. Eles cobrem **janeiro a março de 2026** com lançamentos variados (salário, aluguel, mercado, transporte, lazer, saúde etc.) e mantêm **o mesmo padrão de colunas do projeto FinAI original**:
+Os dados em `data/transacoes.csv` são **sintéticos, gerados para este exercício**: não são transações reais. São 34 lançamentos de **janeiro a março de 2026** (salário, aluguel, mercado, transporte, lazer, saúde etc.), com **o mesmo padrão de colunas do projeto FinAI original**:
 
 | Coluna | Descrição | Exemplo |
 |---|---|---|
@@ -27,46 +79,91 @@ Os dados em `data/transacoes.csv` são **sintéticos, gerados para este exercíc
 | `valor` | Valor em reais, sempre positivo, com ponto decimal | `1250.00` |
 | `tipo` | `entrada` ou `saida` | `saida` |
 
-Esse arquivo é a fonte de dados do flow (`flow.json`): o componente **File** do Langflow aponta para `data/transacoes.csv`.
+## Como rodar do zero
 
-## O flow (`flow.json`)
+### 1. Instalar o Ollama e baixar o modelo
 
+Instale o Ollama em https://ollama.com/download e confirme que ele está rodando:
+
+```powershell
+ollama list
+ollama pull llama3.2:1b
+ollama list   # confirmar que llama3.2:1b aparece
 ```
-File (data/transacoes.csv) ─► Resumo Financeiro (pandas) ─► Prompt {fatos} ─► Ollama (llama3.2:1b) ─► Validador ─► Chat Output
-Chat Input (pergunta) ──────► Resumo Financeiro {pergunta}     Prompt {pergunta}
-                              Resumo Financeiro ─────────────────────────────────────────────────────► Validador {fatos}
+
+### 2. Criar e ativar o ambiente virtual Python
+
+Na raiz do projeto:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 ```
 
-A ideia é: **o pandas calcula e o LLM só redige**.
+> Se o PowerShell bloquear a ativação, rode antes:
+> `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
 
-| Etapa | O que faz |
-|---|---|
-| **Resumo Financeiro** (`components/resumo_financeiro.py`) | Lê o CSV com pandas e calcula a soma por categoria e mês, os totais mensais e a maior despesa do mês e do período. A partir dos meses e categorias citados na pergunta e da intenção dela (*total*, *lista* ou *maior despesa*), entrega **só o fato que responde à pergunta**, já calculado. Se a pergunta não tiver uma intenção reconhecível, entrega o relatório completo. |
-| **Prompt + Ollama** | O `llama3.2:1b` recebe o fato pronto e só o reescreve em linguagem natural, sem fazer contas. |
-| **Validador** (`components/validador_resposta.py`) | Confere se a resposta do modelo tem **exatamente** os valores em R$ dos fatos. Se o modelo recusar, deixar um valor de fora ou inventar um número, devolve o fato calculado no lugar. |
+### 3. Instalar o Langflow
 
-O `flow.json` é gerado pelo script `scripts/gen_flow.py`, a partir dos componentes instalados no `.venv` e dos componentes customizados em `components/`, cujo código vai embutido no `flow.json`:
+```powershell
+pip install langflow   # neste projeto: 1.13.1, que já traz o pandas
+```
+
+### 4. Criar o `.env`
+
+```powershell
+Copy-Item .env.example .env
+```
+
+### 5. Gerar o `flow.json`
 
 ```powershell
 python scripts/gen_flow.py
 ```
 
-**Caminho do CSV:** no `flow.json`, o componente File guarda o caminho **absoluto** de `data/transacoes.csv`. O Langflow interpreta caminhos relativos com `/` (ex.: `data/transacoes.csv`) como chaves do armazenamento interno dele, e não como arquivos no disco. Se o projeto mudar de pasta ou de máquina, rode o script de novo.
+**Caminho do CSV:** o componente File guarda o caminho **absoluto** de `data/transacoes.csv`. O Langflow interpreta caminhos relativos com `/` (ex.: `data/transacoes.csv`) como chaves do armazenamento interno dele, e não como arquivos no disco. Se o projeto mudar de pasta ou de máquina, rode o script de novo.
 
-**Acesso a arquivos locais:** por padrão (`LANGFLOW_RESTRICT_LOCAL_FILE_ACCESS=true`), o Langflow só lê arquivos enviados pela própria interface. Para o File ler direto do disco, é preciso desativar essa restrição. Isso é aceitável numa máquina local, com um único usuário, mas **nunca em um servidor compartilhado**.
+### 6. Definir as variáveis de ambiente do Langflow
 
-Para rodar o flow pelo terminal, sem abrir a interface (Git Bash):
+Antes de subir o Langflow, defina na **mesma sessão do PowerShell**:
+
+```powershell
+$env:LANGFLOW_SUPERUSER = "admin"
+$env:LANGFLOW_SUPERUSER_PASSWORD = "troque-esta-senha"
+$env:LANGFLOW_RESTRICT_LOCAL_FILE_ACCESS = "false"
+```
+
+| Variável | Para quê |
+|---|---|
+| `LANGFLOW_SUPERUSER` | Usuário administrador que o Langflow cria ao iniciar; é com ele que você entra na interface. |
+| `LANGFLOW_SUPERUSER_PASSWORD` | Senha desse usuário. Escolha a sua e **não a coloque em arquivos versionados**. |
+| `LANGFLOW_RESTRICT_LOCAL_FILE_ACCESS` | Por padrão (`true`), o Langflow só lê arquivos enviados pela própria interface. Com `false`, o componente File lê `data/transacoes.csv` direto do disco. |
+
+> ⚠️ Desativar a restrição de arquivos locais é aceitável numa máquina local, com um único usuário, mas **nunca em um servidor compartilhado**. Se preferir não desativar, envie o `transacoes.csv` pelo próprio componente File na interface.
+
+As variáveis valem só para a sessão atual do terminal. Ao abrir um novo PowerShell, defina-as de novo.
+
+### 7. Subir o Langflow e importar o flow
+
+```powershell
+langflow run
+```
+
+A interface abre em http://127.0.0.1:7860 (o Ollama precisa estar rodando em segundo plano). Entre com o usuário e a senha do passo 6, clique em **Import**, selecione `flow.json` e abra o **Playground** para fazer perguntas.
+
+### Alternativa: rodar pelo terminal, sem interface
+
+Não precisa de superusuário nem de `langflow run`. No Git Bash:
 
 ```bash
 PYTHONUTF8=1 LANGFLOW_RESTRICT_LOCAL_FILE_ACCESS=false \
   .venv/Scripts/lfx.exe run flow.json "Qual foi a maior despesa de março de 2026?" --format text
 ```
 
-Na interface: use **Import** e selecione `flow.json`. Como alternativa, sem desativar a restrição, envie o `transacoes.csv` pelo próprio componente File.
+## Resultado dos testes (13/11/2026)
 
-### Resultado dos testes (13/11/2026)
-
-#### Versão 1: CSV cru direto para o LLM ❌
+### Versão 1: CSV cru direto para o LLM ❌
 
 Na primeira versão, o CSV inteiro ia direto no prompt. O `llama3.2:1b` **errou as 3 perguntas**:
 
@@ -76,7 +173,7 @@ Na primeira versão, o CSV inteiro ia direto no prompt. O `llama3.2:1b` **errou 
 | Transações de alimentação em jan/2026 | Supermercado e *Academia (saude)* | Supermercado e Restaurante |
 | Maior despesa de mar/2026 | Combustível, "R$ 2.240,00" | **Aluguel, R$ 1.250,00** (Combustível foi R$ 240,00) |
 
-#### Versão 2: pandas + LLM redator + validador ✅
+### Versão 2: pandas + LLM redator + validador ✅
 
 As mesmas 3 perguntas, **3 execuções de cada** pelo `flow.json` completo. **Os números bateram nas 9 execuções:**
 
@@ -86,7 +183,7 @@ As mesmas 3 perguntas, **3 execuções de cada** pelo `flow.json` completo. **Os
 | Transações de alimentação em jan/2026 | **Supermercado em 04/01/2026 (R$ 380,50)** e **Restaurante em 11/01/2026 (R$ 98,00)**, total **R$ 478,50** | LLM em 1–2 de 3, validador nas demais (varia a cada rodada) |
 | Maior despesa de mar/2026 | "A maior despesa em março de 2026 foi **Aluguel (moradia)**, no valor de **R$ 1.250,00**, em 03/03/2026." | LLM nas 3 |
 
-#### O que aprendemos com o `llama3.2:1b`
+### O que aprendemos com o `llama3.2:1b`
 
 - **Com o fato já calculado**, ele reescreve totais e maior despesa corretamente: 10 de 10 em testes diretos no Ollama.
 - **Ele recusa de forma errática.** Diante de "Liste as transações... com data e valor", responde "não posso fornecer informações financeiras" em cerca de **8 de cada 10** tentativas, mesmo com a resposta pronta no prompt e com uma mensagem de sistema dizendo que os dados são de teste. Ajustar o prompt resolvia uma pergunta e quebrava outra.
@@ -115,49 +212,19 @@ O **FinAI** e o **finflow-lite** usam o mesmo esquema de dados e chamam um LLM l
 
 **Conclusão.** Com um modelo pequeno, a qualidade da resposta depende menos do framework e mais de **quanto trabalho se tira do LLM**. O Langflow não resolveu sozinho nenhum dos erros da Versão 1. O que resolveu foi tirar as contas do modelo e conferir a saída dele. Essas duas ideias valem para o FinAI também e poderiam ser aplicadas em Python puro, como funções antes e depois da chamada `requests`. O Langflow ajuda a prototipar, visualizar e testar o pipeline rápido. O Python puro do FinAI continua sendo a opção mais enxuta para levar a produção uma lógica já validada aqui.
 
-## Ambiente
+## Estrutura do projeto
 
-- Windows 11 / PowerShell
-- Python 3.14.3
-- Langflow 1.13.1 (instalado via pip; foi a versão que o pip resolveu no Python 3.14)
-
-## Comandos usados no setup
-
-### 1. Verificar se o Ollama está instalado e rodando
-
-```powershell
-ollama list
 ```
-
-### 2. Baixar o modelo
-
-```powershell
-ollama pull llama3.2:1b
-ollama list   # confirmar que llama3.2:1b aparece
+finflow-lite/
+├── components/
+│   ├── resumo_financeiro.py   # componente customizado: agregações com pandas
+│   └── validador_resposta.py  # componente customizado: confere os R$ da resposta
+├── data/
+│   └── transacoes.csv         # dados sintéticos no formato do FinAI
+├── scripts/
+│   └── gen_flow.py            # gera o flow.json
+├── flow.json                  # flow do Langflow (gerado; não editar à mão)
+├── .env.example               # modelo de configuração do Ollama
+├── CLAUDE.md
+└── README.md
 ```
-
-### 3. Criar e ativar o ambiente virtual Python
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-```
-
-> Se o PowerShell bloquear a ativação, rode antes:
-> `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
-
-### 4. Instalar o Langflow
-
-```powershell
-pip install langflow
-```
-
-## Como rodar
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-langflow run
-```
-
-A interface abre em http://127.0.0.1:7860. O Ollama precisa estar rodando em segundo plano.
