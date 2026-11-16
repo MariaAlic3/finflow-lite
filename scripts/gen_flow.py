@@ -119,11 +119,15 @@ def out_types(n, name):
 
 
 def enc(d):
-    return json.dumps(d, ensure_ascii=False).replace('"', "œ")
+    # Mesmo formato do frontend do Langflow: chaves ordenadas, sem espaços, aspas trocadas por "œ".
+    return json.dumps(d, ensure_ascii=False, sort_keys=True, separators=(",", ":")).replace('"', "œ")
 
 
 def edge(src, out, tgt, field):
     s, t = by_id[src], by_id[tgt]
+    # Na interface, o File passa a ter várias saídas (Structured Content, Raw Content, File Path).
+    # Sem "selected_output", a interface mostra outra saída e a conexão aparece quebrada.
+    s["data"]["selected_output"] = out
     tf = t["data"]["node"]["template"][field]
     sh = {"dataType": s["data"]["type"], "id": src, "name": out, "output_types": out_types(s, out)}
     th = {"fieldName": field, "id": tgt, "inputTypes": tf.get("input_types", ["Message"]), "type": tf.get("type", "str")}
