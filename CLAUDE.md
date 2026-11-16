@@ -41,9 +41,21 @@ ollama pull llama3.2:1b
 # Instalar/atualizar dependências
 pip install langflow
 
+# Variáveis do Langflow (na mesma sessão, antes do `langflow run`)
+$env:LANGFLOW_SUPERUSER = "admin"
+$env:LANGFLOW_SUPERUSER_PASSWORD = "troque-esta-senha"
+$env:LANGFLOW_RESTRICT_LOCAL_FILE_ACCESS = "false"
+
 # Rodar o Langflow (abre em http://127.0.0.1:7860)
 langflow run
 ```
+
+### Variáveis de ambiente do Langflow
+
+- `LANGFLOW_SUPERUSER` / `LANGFLOW_SUPERUSER_PASSWORD`: usuário e senha do administrador usado para entrar na interface. **Nunca grave a senha real em arquivo versionado** (nem no `.env.example`, nem em docs); use placeholders.
+- A senha só é aplicada quando o superusuário é criado. Se ele já existe no banco, o Langflow **mantém a senha antiga** e avisa no log ("LANGFLOW_SUPERUSER_PASSWORD was not applied...").
+- O banco padrão fica em `.venv/Lib/site-packages/langflow/langflow.db`. `LANGFLOW_CONFIG_DIR` **não** muda isso. Para subir uma instância de teste sem tocar no banco da usuária, use outra porta e `LANGFLOW_DATABASE_URL=sqlite:///<pasta temporária>/isolated.db`.
+- `LANGFLOW_RESTRICT_LOCAL_FILE_ACCESS=false`: ver a seção do flow abaixo.
 
 ## Dados
 
@@ -70,6 +82,11 @@ langflow run
   - recusa cerca de 80% das perguntas do tipo "Liste as transações..." ("não posso fornecer informações financeiras"); nesses casos o validador entra em ação.
   - Ajustar o prompt para resolver uma pergunta costuma quebrar outra. Ao mexer no prompt, **rode de novo as 3 perguntas do README, 3 vezes cada**, e confira se os valores batem com os calculados pelo pandas.
   - O texto de sistema (`SYSTEM_MESSAGE` em `gen_flow.py`) é enviado ao Ollama pelo campo `system_message`.
+- Importação pela interface: histórico da conexão Read File → Resumo Financeiro:
+  1. **Problema (16/11/2026):** ao importar o `flow.json` na interface, essa conexão veio quebrada e teve de ser refeita à mão, a partir da saída **Raw Content** do Read File (não **File Path**) até o campo **CSV (conteúdo)** (`csv_text`) do Resumo Financeiro. Depois do ajuste, o Playground respondeu R$ 478,50 para alimentação em jan/2026.
+  2. **Causa provável:** na interface, o Read File recalcula as saídas para um CSV (Structured Content, Raw Content, File Path), e o `flow.json` não dizia qual saída estava em uso (`selected_output`). `csv_text` é o nome interno certo do campo: "CSV (conteúdo)" é só o nome de exibição.
+  3. **Correção (commit `688d3fc`):** o `gen_flow.py` grava `selected_output` em cada nó de origem e escreve os handles das conexões no formato do frontend (chaves ordenadas, sem espaços).
+  4. **Verificação (16/11/2026), numa instância isolada na porta 7861:** o login, o Import (`/api/v1/flows/upload/`) e o Playground (`/api/v1/run`, R$ 478,50) funcionaram. As 8 conexões passam nas regras de validação de conexões do frontend 1.13.1, mesmo com as saídas do Read File recalculadas. **Porém o `flow.json` antigo também passa nessas regras**, então a simulação não reproduz a quebra. Falta confirmar **no navegador** se a conexão aparece ligada sem ajuste manual. Até lá, mantenha no README a instrução de ajuste manual.
 - Arquivo em UTF-8. No PowerShell 5.1, leia com `Get-Content -Encoding UTF8`, senão os acentos aparecem quebrados.
 
 ## Estrutura
