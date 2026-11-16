@@ -47,6 +47,8 @@ python scripts/gen_flow.py
 
 Para mudar o flow, altere `scripts/gen_flow.py` ou `components/*.py` e rode o script de novo.
 
+**O `flow.json` não é versionado** (está no `.gitignore`), porque guarda o caminho absoluto do CSV na sua máquina. Depois de clonar o repositório, gere o arquivo localmente com `python scripts/gen_flow.py` antes de rodar o projeto (passo 5 do setup).
+
 ## Ferramentas e versões
 
 | Ferramenta | Versão | Papel |
@@ -117,6 +119,8 @@ Copy-Item .env.example .env
 ```
 
 ### 5. Gerar o `flow.json`
+
+O `flow.json` não vem no repositório: gere-o antes de importar o flow no Langflow ou de rodar o `lfx run`.
 
 ```powershell
 python scripts/gen_flow.py
@@ -255,7 +259,7 @@ finflow-lite/
 │   └── transacoes.csv         # dados sintéticos no formato do FinAI
 ├── scripts/
 │   └── gen_flow.py            # gera o flow.json
-├── flow.json                  # flow do Langflow (gerado; não editar à mão)
+├── flow.json                  # flow do Langflow (gerado localmente; não versionado)
 ├── .env.example               # modelo de configuração do Ollama
 ├── CLAUDE.md
 └── README.md

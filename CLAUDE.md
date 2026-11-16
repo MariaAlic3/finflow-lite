@@ -71,6 +71,7 @@ langflow run
   - `resumo_financeiro.py`: agregações com pandas. Detecta mês, categoria e intenção (total, lista ou maior despesa) na pergunta e entrega só o fato pronto; sem intenção reconhecida, entrega o relatório completo.
   - `validador_resposta.py`: se a resposta do LLM recusar, omitir ou inventar um valor em R$, devolve o fato calculado.
   - Cada arquivo precisa ser um **módulo autocontido**, porque o Langflow embute o código-fonte inteiro no `flow.json`.
+- O `flow.json` **não é versionado** (está no `.gitignore`), porque guarda o caminho absoluto do CSV na máquina local. Gere com `python scripts/gen_flow.py` depois de clonar.
 - **Não edite o `flow.json` à mão.** Altere `scripts/gen_flow.py` ou `components/*.py` e rode `python scripts/gen_flow.py`. O script monta os nós a partir das classes reais do Langflow instalado (`lfx` / `lfx_ollama`).
 - O File usa caminho **absoluto e nativo do Windows** (barras invertidas). Caminhos relativos ou com `/` são interpretados como chave de armazenamento interno e falham com `StorageNamespaceError`.
 - Ler arquivo local exige `LANGFLOW_RESTRICT_LOCAL_FILE_ACCESS=false`. Defina só no processo, nunca em servidor compartilhado.
@@ -85,7 +86,7 @@ langflow run
 - Importação pela interface: histórico da conexão Read File → Resumo Financeiro:
   1. **Problema (16/11/2026):** ao importar o `flow.json` na interface, essa conexão veio quebrada e teve de ser refeita à mão, a partir da saída **Raw Content** do Read File (não **File Path**) até o campo **CSV (conteúdo)** (`csv_text`) do Resumo Financeiro. Depois do ajuste, o Playground respondeu R$ 478,50 para alimentação em jan/2026.
   2. **Causa provável:** na interface, o Read File recalcula as saídas para um CSV (Structured Content, Raw Content, File Path), e o `flow.json` não dizia qual saída estava em uso (`selected_output`). `csv_text` é o nome interno certo do campo: "CSV (conteúdo)" é só o nome de exibição.
-  3. **Correção (commit `688d3fc`):** o `gen_flow.py` grava `selected_output` em cada nó de origem e escreve os handles das conexões no formato do frontend (chaves ordenadas, sem espaços).
+  3. **Correção (commit `cdfe0a2`):** o `gen_flow.py` grava `selected_output` em cada nó de origem e escreve os handles das conexões no formato do frontend (chaves ordenadas, sem espaços).
   4. **Verificação (16/11/2026), numa instância isolada na porta 7861:** o login, o Import (`/api/v1/flows/upload/`) e o Playground (`/api/v1/run`, R$ 478,50) funcionaram. As 8 conexões passam nas regras de validação de conexões do frontend 1.13.1, mesmo com as saídas do Read File recalculadas. **Porém o `flow.json` antigo também passa nessas regras**, então a simulação não reproduz a quebra. Falta confirmar **no navegador** se a conexão aparece ligada sem ajuste manual. Até lá, mantenha no README a instrução de ajuste manual.
 - Arquivo em UTF-8. No PowerShell 5.1, leia com `Get-Content -Encoding UTF8`, senão os acentos aparecem quebrados.
 
@@ -99,7 +100,7 @@ finflow-lite/
 ├── components/
 │   ├── resumo_financeiro.py   # componente customizado: agregações com pandas
 │   └── validador_resposta.py  # componente customizado: confere os R$ da resposta
-├── flow.json         # flow do Langflow (gerado; não editar à mão)
+├── flow.json         # flow do Langflow (gerado localmente; não versionado, não editar à mão)
 ├── scripts/
 │   └── gen_flow.py   # gera o flow.json
 ├── .env              # configuração local (não versionado)
