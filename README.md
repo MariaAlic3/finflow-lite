@@ -192,6 +192,38 @@ As mesmas 3 perguntas, **3 execuções de cada** pelo `flow.json` completo. **Os
 
 **Limitação atual:** a detecção de intenção usa palavras-chave (`total`, `quanto`, `gastos`, `liste`, `quais`, `maior`...). Perguntas fora desses padrões recebem o relatório completo, e aí a qualidade da redação volta a depender do modelo. O validador continua barrando números inventados nesse caso.
 
+## Testado na interface gráfica
+
+Além do terminal (`lfx run`), o flow foi importado e testado na interface do Langflow 1.13.1.
+
+### Problema encontrado: conexão Read File → Resumo Financeiro quebrada
+
+Ao importar o `flow.json` pela interface, **a conexão entre o Read File e o Resumo Financeiro (pandas) veio quebrada**. As outras conexões vieram certas.
+
+- **Sintoma:** o campo de entrada do Resumo Financeiro aparece com o nome de exibição **"CSV (conteúdo)"**, enquanto no JSON gerado a conexão aponta para o nome interno **`csv_text`**. Os dois nomes não batiam, e a ligação teve de ser refeita.
+- **Saída certa do Read File:** na interface, o Read File mostra mais de uma saída para um CSV (**Structured Content**, **Raw Content** e **File Path**). O Resumo Financeiro espera o **conteúdo** do arquivo, então a ligação tem de sair de **Raw Content**. Ligar em **File Path** faz o pandas receber o caminho do arquivo como se fosse o CSV, e o cálculo falha.
+
+**Como ajustar na interface:**
+
+1. Apague a conexão quebrada, se ela aparecer.
+2. No Read File, escolha a saída **Raw Content** (não **File Path**).
+3. Arraste de **Raw Content** até o campo **CSV (conteúdo)** do Resumo Financeiro.
+
+### Resultado após o ajuste ✅
+
+Com a conexão refeita, o **Playground** respondeu corretamente à pergunta sobre **alimentação em janeiro de 2026: R$ 478,50** (Supermercado R$ 380,50 + Restaurante R$ 98,00), o mesmo valor obtido pelo terminal.
+
+### Correção no `gen_flow.py`
+
+O Read File muda as próprias saídas quando a interface carrega o arquivo, e o `flow.json` não dizia qual delas estava em uso. Por isso o `scripts/gen_flow.py` agora:
+
+- grava em cada nó a saída usada pela conexão (`selected_output`; no Read File, `message` = **Raw Content**);
+- escreve os identificadores das conexões no mesmo formato que a interface usa (chaves em ordem alfabética, sem espaços).
+
+O `csv_text` continua sendo o nome interno correto do campo: **"CSV (conteúdo)"** é só o nome de exibição dele.
+
+> **Limitação conhecida:** a correção foi conferida pelo terminal (`lfx run` respondeu R$ 478,50), mas **ainda não foi testada numa nova importação pela interface**. Se a conexão vier quebrada de novo, faça o ajuste manual acima.
+
 ## Comparação com o FinAI
 
 O **FinAI** e o **finflow-lite** usam o mesmo esquema de dados e chamam um LLM local via Ollama, mas organizam o trabalho de formas diferentes.
